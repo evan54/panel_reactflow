@@ -118,27 +118,6 @@ class Edge(param.Parameterized):
         }
 
 
-class ReactFlowComponentViewer(pn.viewable.Viewer):
-
-    nodes = param.List()
-    edges = param.List()
-
-    def __init__(self, *, nodes, edges, **reactflow_params):
-        super().__init__(nodes=nodes, edges=edges)
-        self._reactflow = ReactFlowComponent(
-            nodes=[n.to_reactflow() for n in self.nodes],
-            edges=[e.to_reactflow() for e in self.edges],
-            **reactflow_params
-        )
-
-    @param.depends("nodes", watch=True)
-    def _update_reactflow_nodes(self):
-        self._reactflow.nodes = [n.to_reactflow() for n in self.nodes]
-
-    def __panel__(self):
-        return self._reactflow
-
-
 class ReactFlowEditor(pn.custom.PyComponent):
     """
     """
@@ -314,7 +293,6 @@ class ReactFlowEditor(pn.custom.PyComponent):
     ###########################################################################
     ## LAYOUT
     ###########################################################################
-
     def _create_layout(self):
         """Creates the component's visible layout."""
         controls = pn.Card(
