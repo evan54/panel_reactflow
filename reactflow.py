@@ -1,3 +1,5 @@
+from pprint import pprint
+
 from pathlib import Path
 import uuid
 
@@ -7,12 +9,13 @@ import panel as pn
 import param
 import panel.custom
 import panel.viewable
+import panel.reactive
 
 pn.extension(
     "tabulator",
     css_files=[
         "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"],
-    )
+)
 
 
 class ReactFlowComponent(pn.custom.ReactComponent):
@@ -24,192 +27,315 @@ class ReactFlowComponent(pn.custom.ReactComponent):
     default_edge_options = param.Dict(
         doc="https://reactflow.dev/api-reference/types/default-edge-options")
 
-    _importmap = {
-        "imports": {
-            "@xyflow/react": "https://esm.sh/@xyflow/react",
-        }
-    }
+    _importmap = {"imports": {"@xyflow/react": "https://esm.sh/@xyflow/react"}}
     _esm = Path(__file__).parent / "reactflow.js"
     _stylesheets = [
-        "https://cdn.jsdelivr.net/npm/@xyflow/react/dist/style.css",
-    ]
+        "https://cdn.jsdelivr.net/npm/@xyflow/react/dist/style.css"]
 
 
-class NodeTable(pn.viewable.Viewer):
+class Node(param.Parameterized):
+
+    id_ = param.String()
+    label = param.String()
+    xy = param.XYCoordinates()
+    selected = param.Boolean(default=False)
+    react_props = param.Dict(default={})
+    name = param.String()
+
+    def __init__(self, **params):
+        super().__init__(**params)
+        self.name = f"Node{self.id_}"
+
+    def to_reactflow(self):
+        return {
+            "id": self.id_,
+            "position": {"x": self.xy[0], "y": self.xy[1]},
+            "data": {"label": self.label},
+            "selected": self.selected,
+            **self.react_props,
+        }
+
+    @classmethod
+    def from_reactflow(cls, kwargs):
+        pos = kwargs.pop("position")
+        return cls(
+            id_=kwargs.pop("id"),
+            label=kwargs.pop("data", {}).get("label", None),
+            xy=(pos["x"], pos["y"]),
+            selected=kwargs.pop("selected", False),
+            react_props=kwargs
+        )
+
+    def to_tabular(self):
+        return {
+            "id": self.id_,
+            "x": self.xy[0],
+            "y": self.xy[1],
+            "label": self.label,
+        }
+
+    def __eq__(self, other):
+        if not isinstance(other, Node):
+            return NotImplemented
+        return (
+            self.id_ == other.id_ and
+            self.label == other.label and
+            self.xy == other.xy and
+            self.selected == other.selected and
+            self.react_props == other.react_props
+        )
+
+
+class Edge(param.Parameterized):
+
+    source = param.ClassSelector(class_=Node)
+    target = param.ClassSelector(class_=Node)
+    label = param.String()
+    selected = param.Boolean(default=False)
+    react_props = param.Dict(default={})
+    name = param.String()
+
+    def __init__(self, **params):
+        super().__init__(**params)
+        self.name = f"Edge{self.source.id_}_{self.target.id_}"
+
+    def to_reactflow(self):
+        return {
+            "id": f"{self.source.id_} -> {self.target.id_}",
+            "source": self.source.id_,
+            "target": self.target.id_,
+            "label": self.label,
+            **self.react_props,
+        }
+
+    def to_tabular(self):
+        return {
+            "source_id": self.source.id_,
+            "target_id": self.target.id_,
+            "source_label": self.source.label,
+            "target_label": self.target.label,
+            "label": self.label,
+        }
+
+
+class ReactFlowComponentViewer(pn.viewable.Viewer):
 
     nodes = param.List()
-    node_cols = param.List()
+    edges = param.List()
 
-    def __init__(self, *, nodes=None, node_cols=None, on_click=None):
-        if nodes is None:
-            nodes = []
-        if len(nodes) > 0:
-            node_cols = list(nodes[0])
-        super().__init__(nodes=nodes, node_cols=node_cols)
-        self._tab = self._make_nodes_table(on_click)
-
-    def _nodes_to_df(self):
-        if not self.nodes:
-            return pd.DataFrame(columns=self.node_cols)
-        df = pd.DataFrame([
-            {
-                "id": n["id"], 
-                "label": n.get("data", {}).get("label", ""),
-                "x": n["position"]["x"],
-                "y": n["position"]["y"],
-            }
-            for n in self.nodes
-        ])
-        return df
-
-    def _on_edit(self, event):
-        row, col, val = event.row, event.column, event.value
-        if col == "label":
-            new_nodes = list(self.nodes)
-            new_nodes[row]["data"]["label"] = val
-            self.nodes = new_nodes
-
-    def _make_nodes_table(self, on_click):
-        df = self._nodes_to_df()
-        tab = pn.widgets.Tabulator(
-            df,
-            show_index=False,
-            layout="fit_data",
-            editors={
-                "label": "input",
-            },
-            buttons={'delete': '<i class="fa fa-trash"></i>'},
-            selectable="checkbox",
-            height=250,
-            theme="simple",
-            on_edit=self._on_edit,
-            on_click=on_click,
+    def __init__(self, *, nodes, edges, **reactflow_params):
+        super().__init__(nodes=nodes, edges=edges)
+        self._reactflow = ReactFlowComponent(
+            nodes=[n.to_reactflow() for n in self.nodes],
+            edges=[e.to_reactflow() for e in self.edges],
+            **reactflow_params
         )
-        return tab
 
-    @pn.depends("nodes", watch=True)
-    def _update_selected(self, *args, **kwargs):
-        self._tab.selection = [
-            i for i, n in enumerate(self.nodes) if n.get("selected", False)]
-
-    @pn.depends("nodes", watch=True)
-    def update_values(self):
-        self._tab.value = self._nodes_to_df()
+    @param.depends("nodes", watch=True)
+    def _update_reactflow_nodes(self):
+        self._reactflow.nodes = [n.to_reactflow() for n in self.nodes]
 
     def __panel__(self):
-        return self._tab
+        return self._reactflow
 
 
 class ReactFlowEditor(pn.custom.PyComponent):
     """
-    Goals:
-    * edit the label of a node
-    * add a node
-    * delete a node
-    * select a node
     """
+    # TODO
+    # * finish edge management
+    # * add edge
+    # * delete edge
+    # * modify edge
+    # * select edge
 
-    reactflow_params = param.Dict()
+    nodes = param.List(default=[])
+    edges = param.List(default=[])
 
-    # UI options
-    # --- Private: widgets and components
-    _nodes_table = param.ClassSelector(class_=NodeTable)
-    _edges_table = None
-    _reactflow = param.ClassSelector(class_=ReactFlowComponent)
-
-    # Column order to enforce on the grids
-    _NODE_COLS = ("id", "label",)
-    _EDGE_COLS = ("id", "source", "target",)
-
-    def __init__(self, _new_node_props=None, **params):
-        nodes = params.pop("nodes", [])
-        edges = params.pop("edges", [])
+    def __init__(self, **params):
+        self.reactflow_params = params.pop("reactflow_params", {})
+        self.new_node_react_props = params.pop("new_node_react_props", {})
+        self.new_edge_react_props = params.pop("new_edge_react_props", {})
         super().__init__(**params)
 
-        self._new_node_props = _new_node_props
-        self._nodes_table = NodeTable(nodes=nodes,
-                                      on_click=self._table_on_click_delete)
-        self._reactflow = ReactFlowComponent(
-            nodes=nodes, edges=edges, **self.reactflow_params)
-        self._reactflow.link(self._nodes_table, nodes="nodes")
-
-    def _table_on_click_delete(self, event):
-        if event.column == "delete":
-            self._reactflow.nodes = [
-                n for i, n in enumerate(self._reactflow.nodes)
-                if i != event.row
-            ]
-
-    def _add_node_layout(self):
+        # Initialise widgets
+        self._reactflow = self._init_reactflow()
+        self._node_tabulator = self._init_node_tabulator()
+        self._edge_tabulator = self._init_edge_tabulator()
         self._add_node_label = pn.widgets.TextInput(name="Label")
         self._add_node_button = pn.widgets.Button(name="Submit")
+
+        # initialise watchers
+        self._updating = False
+        self._init_watchers()
+
+        # initalise layout
+        self._layout = self._create_layout()
+
+    ###########################################################################
+    ## Helper functions
+    ###########################################################################
+    def _init_reactflow(self):
+        return ReactFlowComponent(
+            nodes=[n.to_reactflow() for n in self.nodes],
+            edges=[e.to_reactflow() for e in self.edges],
+            **self.reactflow_params
+        )
+
+    def _init_node_tabulator(self):
+        df, selected = self._nodes_to_df()
+        return pn.widgets.Tabulator(
+            value=df,
+            show_index=False,
+            layout="fit_data",
+            editors={"label": "input"},
+            buttons={'delete': '<i class="fa fa-trash"></i>'},
+            selectable="checkbox",
+            selection=selected,
+            height=250,
+            theme="simple",
+        )
+
+    def _init_edge_tabulator(self):
+        df, selected = self._edges_to_df()
+        return pn.widgets.Tabulator(
+            value=df,
+            show_index=False,
+            layout="fit_data",
+            editors={"label": "input"},
+            buttons={'delete': '<i class="fa fa-trash"></i>'},
+            selectable="checkbox",
+            selection=selected,
+            height=250,
+            theme="simple",
+        )
+
+    def _nodes_to_df(self):
+        if not self.nodes:
+            return pd.DataFrame(columns=self.node_cols)
+        df = pd.DataFrame([n.to_tabular() for n in self.nodes])
+        selected = [i for i, n in enumerate(self.nodes) if n.selected]
+        return df, selected
+
+    def _edges_to_df(self):
+        if not self.edges:
+            return pd.DataFrame(columns=[
+                "source_id", "target_id", "source_label", "target_label",
+                "label"
+            ])
+        df = pd.DataFrame([e.to_tabular() for e in self.edges])
+        selected = [i for i, e in enumerate(self.edges) if e.selected]
+        return df, selected
+
+    ###########################################################################
+    ## WATCHERS
+    ###########################################################################
+    def _init_watchers(self):
+        """ Setup all the watchers """
+        # global watcher to update UI based on state
+        self.param.watch(self._update_ui_from_nodes_list, "nodes")
+
+        # update state based on reactflow
+        self._reactflow.param.watch(self._update_nodes_from_reactflow, "nodes")
+
+        # update state based on tabulator
+        self._node_tabulator.on_edit(self._update_nodes_from_tabulator_edit)
+        self._node_tabulator.param.watch(self._update_selection_from_tabulator,
+                                    "selection")
+        self._node_tabulator.on_click(self._handle_tabulator_delete)
+
+        # update state when clicking a button
         self._add_node_button.on_click(self._add_node)
-        return pn.Card(
-            self._add_node_label,
-            self._add_node_button,
-            title="Add Node", 
+
+    def _update_ui_from_nodes_list(self, event):
+        """
+        Updates both ReactFlow and Tabulator when the main 'nodes' list 
+        changes.
+        """
+        self._reactflow.nodes = [n.to_reactflow() for n in self.nodes]
+        df, selected_nodes = self._nodes_to_df()
+        self._node_tabulator.value = df
+        if self._node_tabulator.selection != selected_nodes:
+            self._node_tabulator.selection = selected_nodes
+
+    def _update_nodes_from_reactflow(self, event):
+        """
+        Updates the master 'nodes' list when nodes are changed in ReactFlow 
+        (drag/select).
+        """
+        if self._updating:
+            return
+        self._updating = True
+        try:
+            self.nodes = [Node.from_reactflow(n) for n in event.new]
+        finally:
+            self._updating = False
+
+    def _update_nodes_from_tabulator_edit(self, event):
+        """ Update nodes based on label updating of a node """
+        if self._updating:
+            return
+        self._updating = True
+        try:
+            node_to_update = self.nodes[event.row]
+            if event.column == "label":
+                node_to_update.label = event.value
+                self.nodes = self.nodes[:] # Trigger update
+        finally:
+            self._updating = False
+
+    def _update_selection_from_tabulator(self, event):
+        """Updates node selection state when rows are selected in Tabulator."""
+        if self._updating:
+            return
+        try:
+            selected_indices = set(event.new)
+            for i, node in enumerate(self.nodes):
+                node.selected = i in selected_indices
+            self.nodes = self.nodes[:]
+        finally:
+            self._updating = False
+
+    def _handle_tabulator_delete(self, event):
+        if event.column == "delete":
+            self.nodes.pop(event.row)
+            self.nodes = self.nodes[:]
+
+    def _add_node(self, event):
+        new_node = Node(
+            id_=str(uuid.uuid4()),
+            label=self._add_node_label.value,
+            xy = (0, 0),
+            selected = False,
+            react_props=self.new_node_react_props,
+        )
+        self.nodes = self.nodes + [new_node]
+
+    ###########################################################################
+    ## LAYOUT
+    ###########################################################################
+
+    def _create_layout(self):
+        """Creates the component's visible layout."""
+        controls = pn.Card(
+            pn.Row(self._add_node_label, self._add_node_button),
+            title="<i class='fa-solid fa-plus'></i> Add Node",
             sizing_mode="stretch_width"
         )
 
-    def _add_node(self, event):
-        new_node = {
-            "id": str(uuid.uuid4()),
-            "position": {"x": 0, "y": 0},
-            "data": {"label": self._add_node_label.value},
-        }
-        if self._new_node_props:
-            new_node.update(self._new_node_props)
-        new_nodes = self._reactflow.nodes + [new_node]
-        self._reactflow.nodes = new_nodes
-
-    def _delete_node_layout(self):
-        self._delete_selections_button = pn.widgets.Button(name="Delete selected")
-        self._delete_selections_button.on_click(self._delete_node)
-        return self._delete_selections_button
-
-    def _delete_node(self, event):
-        self._reactflow.nodes = [
-            n for n in self._reactflow.nodes
-            if not n.get("selected", False)
-        ]
-
-    def _update_from_table(self, event):
-        self._reactflow.nodes = self._nodes_table.nodes
-
-    def _submit_update_layout(self):
-        self._submit_update_button = pn.widgets.Button(name="Submit updates")
-        self._submit_update_button.on_click(self._update_from_table)
-        return self._submit_update_button
-       
-    def __panel__(self):
-
-        # return pn.pane.Markdown("## ReactFlow Editor", sizing_mode="stretch_width")
-        header = pn.Row(
-            pn.pane.Markdown("## ReactFlow Editor", sizing_mode="stretch_width"),
-            pn.layout.HSpacer(),
+        sidebar = pn.Column(
+            pn.pane.Markdown("### Nodes"),
+            self._node_tabulator,
+            self._edge_tabulator,
+            controls,
+            width=650
         )
-
-        grids = pn.Column(
-            pn.pane.Markdown("**Nodes** (id, label)"),
-            self._nodes_table,
-            pn.Spacer(height=8),
-            pn.pane.Markdown("**Edges** (id, source, target)"),
-            self._edges_table,
-            pn.Row(self._delete_node_layout, self._submit_update_layout),
-            self._add_node_layout,
-            sizing_mode="stretch_both",
-        )
-
         canvas = pn.Column(
-            pn.pane.Markdown("**Canvas**"),
+            pn.pane.Markdown("### Canvas"),
             self._reactflow,
             sizing_mode="stretch_both",
         )
+        return pn.Row(sidebar, canvas, sizing_mode="stretch_both", min_height=600)
 
-        layout = pn.Row(
-            grids,
-            canvas,
-            sizing_mode="stretch_both",
-            height=600,
-        )
-        return pn.Column(header, layout, sizing_mode="stretch_both")
+    def __panel__(self):
+        return self._layout
