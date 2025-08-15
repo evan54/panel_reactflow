@@ -42,6 +42,8 @@ class Node(param.Parameterized):
     react_props = param.Dict(default={})
     name = param.String()
 
+    tabular_params = ["id", "x", "y", "label"]
+
     def __init__(self, **params):
         super().__init__(**params)
         self.name = f"Node{self.id_}"
@@ -94,6 +96,9 @@ class Edge(param.Parameterized):
     selected = param.Boolean(default=False)
     react_props = param.Dict(default={})
     name = param.String()
+
+    tabular_params = ["source_id", "target_id", "source_label", "target_label",
+                      "label"]
 
     def __init__(self, **params):
         super().__init__(**params)
@@ -191,17 +196,14 @@ class ReactFlowEditor(pn.custom.PyComponent):
 
     def _nodes_to_df(self):
         if not self.nodes:
-            return pd.DataFrame(columns=self.node_cols)
+            return pd.DataFrame(columns=Node.tabular_params), []
         df = pd.DataFrame([n.to_tabular() for n in self.nodes])
         selected = [i for i, n in enumerate(self.nodes) if n.selected]
         return df, selected
 
     def _edges_to_df(self):
         if not self.edges:
-            return pd.DataFrame(columns=[
-                "source_id", "target_id", "source_label", "target_label",
-                "label"
-            ])
+            return pd.DataFrame(columns=Edge.tabular_params), []
         df = pd.DataFrame([e.to_tabular() for e in self.edges])
         selected = [i for i, e in enumerate(self.edges) if e.selected]
         return df, selected
