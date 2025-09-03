@@ -59,17 +59,12 @@ class Node(param.Parameterized):
         }
 
     @classmethod
-    def from_reactflow(cls, kwargs, react_props=None):
-        if react_props is None:
-            react_props = {}
+    def from_reactflow(cls, kwargs):
+        """ Extract the position and whether it's selected """
         pos = kwargs.pop("position")
-        return cls(
-            id_=kwargs.pop("id"),
-            label=kwargs.pop("data", {}).get("label", None),
-            xy=(pos["x"], pos["y"]),
-            selected=kwargs.pop("selected", False),
-            react_props=react_props,
-        )
+        return {"id": kwargs["id"],
+                "xy": (pos["x"], pos["y"]),
+                "selected": kwargs.pop("selected", False)}
 
     def to_tabular(self):
         return {
@@ -119,6 +114,7 @@ class Edge(param.Parameterized):
 
     @classmethod
     def from_reactflow(cls, d_nodes, kwargs, react_props=None):
+        """ Return edge instance """
         if react_props is None:
             react_props = {}
         return cls(
@@ -282,18 +278,28 @@ class ReactFlowEditor(pn.custom.PyComponent):
             if not self._updating[field]:
                 self._updating[field] = True
                 try:
+                    d_nodes = {n.id_: n for n in self.nodes}
                     if field == "edges":
-                        d_nodes = {n.id_: n for n in self.nodes}
                         self.edges = [
                             Edge.from_reactflow(
                                 d_nodes, e, self.new_edge_react_props)
                             for e in event.new
                         ]
                     elif field == "nodes":
-                        self.nodes = [
-                            Node.from_reactflow(n, self.new_node_react_props) 
-                            for n in event.new
-                        ]
+                        n_new = len(event.new)
+                        n_nodes = len(self.nodes)
+                        if n_new != n_nodes:
+                            raise ValueError("reactflow event returned diff"
+                                             f"number of nodes ({n_new}) vs"
+                                             f" state ({n_nodes})")
+                        new_nodes = []
+                        for n in event.new:
+                            id_, xy, selected = Node.from_reactflow(n).values()
+                            node_to_modify = d_nodes[id_]
+                            node_to_modify.xy = xy
+                            node_to_modify.selected = selected
+                            new_nodes.append(node_to_modify)
+                        self.nodes = new_nodes
                 finally:
                     self._updating[field] = False
 
