@@ -1,9 +1,9 @@
 import panel as pn
 import param
-import reactflow
+import src.reactflow as rf
 
 from importlib import reload
-reload(reactflow)
+reload(rf)
 
 
 def get_flow():
@@ -18,6 +18,12 @@ def get_flow():
         {"id": "3", "position": {"x": 500, "y": 0}, "data": {"label": "3"}}, 
     ]]
 
+    nodes = [
+        rf.Node(id_="1", xy=(0, 0), label="1", react_props=common_node_props),
+        rf.Node(id_="2", xy=(250, 0), label="2", react_props=common_node_props,
+            selected=True),
+        rf.Node(id_="3", xy=(500, 0), label="3", react_props=common_node_props),
+    ]
     # common edge properties
     common_edge_props = {
         "markerEnd": {"type": "arrowclosed"},
@@ -25,14 +31,12 @@ def get_flow():
         "deletable": True,
     }
 
-    edges = [{
-        "id": "1 > 2",
-        "source": "1",
-        "target": "2",
-        "label": "my edge",
-    }]
+    edges = [
+        rf.Edge(source=nodes[0], target=nodes[1], label="my edge"),
+        rf.Edge(source=nodes[1], target=nodes[2], label="my edge"),
+    ]
 
-    flow = reactflow.ReactFlowComponent(
+    flow = rf.ReactFlowComponent(
         nodes=nodes,
         edges=edges,
 
@@ -48,7 +52,7 @@ def get_flow():
         """.strip()]
     )
 
-    flow_editor = reactflow.ReactFlowEditor(
+    flow_editor = rf.ReactFlowEditor(
         nodes=nodes,
         edges=edges,
         reactflow_params=dict(
@@ -63,16 +67,17 @@ def get_flow():
                 """.strip()
             ],
         ),
+        new_node_react_props=common_node_props,
     )
 
-    return flow, flow_editor
-
+    return None, flow_editor
 
 flow, flow_editor = get_flow()
 button = pn.widgets.Button(name="add node")
 
 app = pn.template.FastGridTemplate(
-    favicon="https://python.org/static/favicon.ico"
+    favicon="https://python.org/static/favicon.ico",
+    title="Reactflow example",
 )
 
 app.main[0:10, :] = pn.Column(
