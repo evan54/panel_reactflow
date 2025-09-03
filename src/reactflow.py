@@ -74,17 +74,6 @@ class Node(param.Parameterized):
             "label": self.label,
         }
 
-    def __eq__(self, other):
-        if not isinstance(other, Node):
-            return NotImplemented
-        return (
-            self.id_ == other.id_ and
-            self.label == other.label and
-            self.xy == other.xy and
-            self.selected == other.selected and
-            self.react_props == other.react_props
-        )
-
 
 class Edge(param.Parameterized):
 
