@@ -24,6 +24,7 @@ class ReactFlowComponent(pn.custom.ReactComponent):
     nodes = param.List(default=[], doc="ReactFlow nodes")
     edges = param.List(default=[], doc="ReactFlow edges")
 
+
     default_edge_options = param.Dict(
         doc="https://reactflow.dev/api-reference/types/default-edge-options")
 
@@ -236,20 +237,21 @@ class ReactFlowEditor(pn.custom.PyComponent):
         self.param.watch(self._update_ui, ["nodes", "edges"])
 
         # update state based on reactflow
-        self._reactflow.param.watch(self._update_from_reactflow, ["nodes", "edges"])
+        self._reactflow.param.watch(self._update_from_reactflow, 
+                                    ["nodes", "edges"])
 
         # update state based on node tabulator
         self._nodes_tabulator.on_edit(self._update_nodes_from_tabulator_edit)
-        self._nodes_tabulator.param.watch(self._update_selection_from_tabulator("nodes"),
-                                    "selection")
+        self._nodes_tabulator.param.watch(
+            self._update_selection_from_tabulator("nodes"), "selection")
         self._nodes_tabulator.on_click(self._handle_tabulator_delete("nodes"))
 
 
         # update state based on edge tabulator
         self._edges_tabulator.on_click(self._handle_tabulator_delete("edges"))
         self._edges_tabulator.on_edit(self._update_edges_from_tabulator_edit)
-        self._edges_tabulator.param.watch(self._update_selection_from_tabulator("edges"),
-                                    "selection")
+        self._edges_tabulator.param.watch(
+            self._update_selection_from_tabulator("edges"), "selection")
 
         # update state when clicking a button
         self._add_node_button.on_click(self._add_node)
@@ -350,7 +352,6 @@ class ReactFlowEditor(pn.custom.PyComponent):
 
     ###########################################################################
     ## EDGE WATCHERS
-
     def _update_edges_from_tabulator_edit(self, event):
         """ Update edges based on label updating of a edge """
         if self._updating["edges"]:
@@ -375,7 +376,6 @@ class ReactFlowEditor(pn.custom.PyComponent):
         )
         self.nodes = self.nodes + [new_node]
 
-
     ###########################################################################
     ## LAYOUT
     ###########################################################################
@@ -399,7 +399,8 @@ class ReactFlowEditor(pn.custom.PyComponent):
             self._reactflow,
             sizing_mode="stretch_both",
         )
-        return pn.Row(sidebar, canvas, sizing_mode="stretch_both", min_height=600)
+        return pn.Row(sidebar, canvas, sizing_mode="stretch_both", 
+                      min_height=600)
 
     def __panel__(self):
         return self._layout
