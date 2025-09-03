@@ -261,7 +261,6 @@ class ReactFlowEditor(pn.custom.PyComponent):
         Updates both ReactFlow and Tabulator when the main 'nodes' list 
         changes.
         """
-        print(pd.Timestamp("now"), "+ _update_ui")
         field = event.name
         setattr(self._reactflow, field, [
             e.to_reactflow() for e in getattr(self, field)])
@@ -316,6 +315,12 @@ class ReactFlowEditor(pn.custom.PyComponent):
                 field_values = getattr(self, field)
                 setattr(self, field,
                         field_values[:event.row] + field_values[event.row+1:])
+                if field == "nodes":
+                    field_value = field_values[event.row]
+                    self.edges = [
+                        e for e in self.edges
+                        if field_value.id_ not in [e.target.id_, e.source.id_]
+                    ]
         return fun
 
     ###########################################################################
