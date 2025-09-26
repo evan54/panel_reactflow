@@ -247,9 +247,6 @@ class ReactFlowEditor(pn.custom.PyComponent):
         changes.
         """
         field = event.name
-        if field == "edge":
-            import ipdb
-            ipdb.set_trace()
         setattr(self._reactflow, field, [
             e.to_reactflow() for e in getattr(self, field)])
         df, selected = getattr(self, f"_{field}_to_df")()
