@@ -24,7 +24,6 @@ class ReactFlowComponent(pn.custom.ReactComponent):
     nodes = param.List(default=[], doc="ReactFlow nodes")
     edges = param.List(default=[], doc="ReactFlow edges")
 
-
     default_edge_options = param.Dict(
         doc="https://reactflow.dev/api-reference/types/default-edge-options")
 
@@ -37,23 +36,21 @@ class ReactFlowComponent(pn.custom.ReactComponent):
 class Node(param.Parameterized):
 
     id_ = param.String()
-    label = param.String()
     xy = param.XYCoordinates()
+    name = param.String()
     selected = param.Boolean(default=False)
     react_props = param.Dict(default={})
-    name = param.String()
 
-    tabular_params = ["id", "x", "y", "label"]
+    tabular_params = ["id", "x", "y", "name"]
 
     def __init__(self, **params):
         super().__init__(**params)
-        self.name = f"Node{self.id_}"
 
     def to_reactflow(self):
         return {
             "id": self.id_,
             "position": {"x": self.xy[0], "y": self.xy[1]},
-            "data": {"label": self.label},
+            "data": {"label": self.name},
             "selected": self.selected,
             **self.react_props,
         }
@@ -71,7 +68,7 @@ class Node(param.Parameterized):
             "id": self.id_,
             "x": self.xy[0],
             "y": self.xy[1],
-            "label": self.label,
+            "name": self.name,
         }
 
 
@@ -79,24 +76,22 @@ class Edge(param.Parameterized):
 
     source = param.ClassSelector(class_=Node)
     target = param.ClassSelector(class_=Node)
-    label = param.String()
     selected = param.Boolean(default=False)
     react_props = param.Dict(default={})
-    name = param.String()
+    weight = param.Number(bounds=(0., 1.), default=None)
 
-    tabular_params = ["source_id", "target_id", "source_label", "target_label",
-                      "label"]
+    tabular_params = ["source_id", "target_id", "source_name", "target_name",]
 
     def __init__(self, **params):
         super().__init__(**params)
-        self.name = f"Edge{self.source.id_}_{self.target.id_}"
+        self.id_ = f"Edge{self.source.id_}_{self.target.id_}"
 
     def to_reactflow(self):
         return {
             "id": f"{self.source.id_} -> {self.target.id_}",
             "source": self.source.id_,
             "target": self.target.id_,
-            "label": self.label,
+            "label": None if self.weight is None else f"{self.weight:.2%}",
             "selected": self.selected,
             **self.react_props,
         }
@@ -106,10 +101,13 @@ class Edge(param.Parameterized):
         """ Return edge instance """
         if react_props is None:
             react_props = {}
+        weight = kwargs.get("label", None)
+        if weight is not None and weight[-1] == "%":
+            weight = float(weight[:-1]) / 100.
         return cls(
             source=d_nodes[kwargs.pop("source")],
             target=d_nodes[kwargs.pop("target")],
-            label=kwargs.pop("label", ""),
+            weight=weight,
             selected=kwargs.pop("selected", False),
             react_props=react_props,
         )
@@ -118,9 +116,9 @@ class Edge(param.Parameterized):
         return {
             "source_id": self.source.id_,
             "target_id": self.target.id_,
-            "source_label": self.source.label,
-            "target_label": self.target.label,
-            "label": self.label,
+            "source_name": self.source.name,
+            "target_name": self.target.name,
+            "weight": self.weight,
         }
 
 
@@ -147,7 +145,7 @@ class ReactFlowEditor(pn.custom.PyComponent):
         self._reactflow = self._init_reactflow()
         self._nodes_tabulator = self._init_nodes_tabulator()
         self._edges_tabulator = self._init_edge_tabulator()
-        self._add_node_label = pn.widgets.TextInput(name="Label")
+        self._add_node_name = pn.widgets.TextInput(name="Name")
         self._add_node_button = pn.widgets.Button(name="Submit")
 
         # initialise watchers
@@ -173,7 +171,7 @@ class ReactFlowEditor(pn.custom.PyComponent):
             value=df,
             show_index=False,
             layout="fit_data",
-            editors={"label": "input"},
+            editors={"name": "input"},
             buttons={'delete': '<i class="fa fa-trash"></i>'},
             selectable="checkbox",
             selection=selected,
@@ -187,7 +185,7 @@ class ReactFlowEditor(pn.custom.PyComponent):
             value=df,
             show_index=False,
             layout="fit_data",
-            editors={"label": "input"},
+            editors={"weight": "input"},
             buttons={'delete': '<i class="fa fa-trash"></i>'},
             selectable="checkbox",
             selection=selected,
@@ -249,6 +247,9 @@ class ReactFlowEditor(pn.custom.PyComponent):
         changes.
         """
         field = event.name
+        if field == "edge":
+            import ipdb
+            ipdb.set_trace()
         setattr(self._reactflow, field, [
             e.to_reactflow() for e in getattr(self, field)])
         df, selected = getattr(self, f"_{field}_to_df")()
@@ -323,14 +324,14 @@ class ReactFlowEditor(pn.custom.PyComponent):
     ###########################################################################
     ## NODE WATCHERS
     def _update_nodes_from_tabulator_edit(self, event):
-        """ Update nodes based on label updating of a node """
+        """ Update nodes based on name updating of a node """
         if self._updating["nodes"]:
             return
         self._updating["nodes"] = True
         try:
             node_to_update = self.nodes[event.row]
-            if event.column == "label":
-                node_to_update.label = event.value
+            if event.column == "name":
+                node_to_update.name = event.value
                 self.nodes = self.nodes[:] # Trigger update
         finally:
             self._updating["nodes"] = False
@@ -338,7 +339,7 @@ class ReactFlowEditor(pn.custom.PyComponent):
     def _add_node(self, event):
         new_node = Node(
             id_=str(uuid.uuid4()),
-            label=self._add_node_label.value,
+            name=self._add_node_name.value,
             xy = (0, 0),
             selected = False,
             react_props=self.new_node_react_props,
@@ -348,28 +349,17 @@ class ReactFlowEditor(pn.custom.PyComponent):
     ###########################################################################
     ## EDGE WATCHERS
     def _update_edges_from_tabulator_edit(self, event):
-        """ Update edges based on label updating of a edge """
+        """ Update edges based on weight updating of a edge """
         if self._updating["edges"]:
             return
         self._updating["edges"] = True
         try:
             edge_to_update = self.edges[event.row]
-            if event.column == "label":
-                edge_to_update.label = event.value
+            if event.column == "weight":
+                edge_to_update.weight = event.value
                 self.edges = self.edges
         finally:
             self._updating["edges"] = False
-
-    def _add_edge(self, event):
-        return
-        new_node = Node(
-            id_=str(uuid.uuid4()),
-            label=self._add_node_label.value,
-            xy = (0, 0),
-            selected = False,
-            react_props=self.new_node_react_props,
-        )
-        self.nodes = self.nodes + [new_node]
 
     ###########################################################################
     ## LAYOUT
@@ -377,7 +367,7 @@ class ReactFlowEditor(pn.custom.PyComponent):
     def _create_layout(self):
         """Creates the component's visible layout."""
         controls = pn.Card(
-            pn.Row(self._add_node_label, self._add_node_button),
+            pn.Row(self._add_node_name, self._add_node_button),
             title="<i class='fa-solid fa-plus'></i> Add Node",
             sizing_mode="stretch_width"
         )

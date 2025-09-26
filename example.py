@@ -19,10 +19,10 @@ def get_flow():
     ]]
 
     nodes = [
-        rf.Node(id_="1", xy=(0, 0), label="1", react_props=common_node_props),
-        rf.Node(id_="2", xy=(250, 0), label="2", react_props=common_node_props,
+        rf.Node(id_="1", xy=(0, 0), name="1", react_props=common_node_props),
+        rf.Node(id_="2", xy=(250, 0), name="2", react_props=common_node_props,
             selected=True),
-        rf.Node(id_="3", xy=(500, 0), label="3", react_props=common_node_props),
+        rf.Node(id_="3", xy=(500, 0), name="3", react_props=common_node_props),
     ]
     # common edge properties
     common_edge_props = {
@@ -32,8 +32,8 @@ def get_flow():
     }
 
     edges = [
-        rf.Edge(source=nodes[0], target=nodes[1], label="my edge"),
-        rf.Edge(source=nodes[1], target=nodes[2], label="my edge"),
+        rf.Edge(source=nodes[0], target=nodes[1], weight=0.1),
+        rf.Edge(source=nodes[1], target=nodes[2], weight=0.),
     ]
 
     flow = rf.ReactFlowComponent(
@@ -81,10 +81,6 @@ app = pn.template.FastGridTemplate(
 )
 
 app.main[0:10, :] = pn.Column(
-    pn.pane.Markdown("hello"),
-    pn.Column(flow),
-    button,
-    pn.layout.Divider(),
     flow_editor,
 )
 app.servable()
