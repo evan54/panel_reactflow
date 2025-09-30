@@ -11,3 +11,4 @@ Other very interesting project along these lines is https://github.com/Zelfior/r
 
 ## TODO
 * updates from the table isn't reflected in the reactflow component
+* Right now the example.py is broken and ReactFlowEditor - however this might be deprecated because of the use of panes in nodes and nodes to be passed as a list of dicts to ReactFlowComponent which is a more bare bones component that should be used
