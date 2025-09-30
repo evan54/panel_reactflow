@@ -21,8 +21,9 @@ pn.extension(
 class ReactFlowComponent(pn.custom.ReactComponent):
     """A Panel component that renders a simple React Flow diagram."""
 
-    nodes = param.List(default=[], doc="ReactFlow nodes")
     edges = param.List(default=[], doc="ReactFlow edges")
+    reactflow_nodes = param.List(default=[])
+    panel_nodes = pn.custom.Children()
 
     default_edge_options = param.Dict(
         doc="https://reactflow.dev/api-reference/types/default-edge-options")
@@ -31,6 +32,54 @@ class ReactFlowComponent(pn.custom.ReactComponent):
     _esm = Path(__file__).parent / "reactflow.js"
     _stylesheets = [
         "https://cdn.jsdelivr.net/npm/@xyflow/react/dist/style.css"]
+
+    def __init__(self, **params):
+        """
+        Nodes are passed as a list of dictionaries. The dictionary mimics the 
+        reactlfow.dev api https://reactflow.dev/api-reference.
+        A special keyword is introduced which is 'panes' for each node and this
+        contains a single viewable that can be presented as the node itself.
+        """
+        # Check if the user provided our new convenience parameter
+        nodes = params.pop("nodes", [])
+        reactflow_nodes, panel_nodes = self._process_nodes(nodes)
+        params["reactflow_nodes"] = reactflow_nodes
+        params["panel_nodes"] = panel_nodes
+        super().__init__(**params)
+
+    @property
+    def nodes(self):
+        return [{
+            **n,
+            "panel": self.reactflow_nodes[i]
+        } for i, n in enumerate(self.nodes)]
+
+    @nodes.setter
+    def nodes(self, value):
+        reactflow_nodes, panel_nodes = self._process_nodes(nodes)
+        self.reactflow_nodes = reactflow_nodes
+        self.panel_nodes = panel_nodes
+
+    def _process_nodes(self, nodes):
+
+        reactflow_nodes = []
+        panel_nodes = []
+
+        # Perform the separation logic
+        for i, n in enumerate(nodes):
+            pane = n.pop("panes", None)
+            panel_nodes.append(pane)
+
+            # Add required keys for the React component
+            n["type"] = "custom"
+            if "data" in n:
+                n["data"]["pane_index"] = i
+            else:
+                n["data"] = {"pane_index": i}
+
+            reactflow_nodes.append(n)
+
+        return reactflow_nodes, panel_nodes
 
 
 class Node(param.Parameterized):
