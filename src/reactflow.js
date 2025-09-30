@@ -30,9 +30,6 @@ function CustomNode({ data }) {
       <Handle type="target" position={Position.Left} />
       <div style={{
         padding: '10px',
-        border: '1px solid #777',
-        borderRadius: '5px',
-        background: '#fff',
         minWidth: '150px',
       }}>
         <h3>{data.label}</h3>
